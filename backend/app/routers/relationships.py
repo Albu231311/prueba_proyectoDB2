@@ -1165,3 +1165,4 @@ def delete_pays(userId: int, platformId: int):
             DELETE r RETURN count(r) as deleted
         """, userId=userId, platformId=platformId)
         return {"deleted": result.single()["deleted"]}
+
