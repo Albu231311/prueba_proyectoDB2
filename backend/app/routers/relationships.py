@@ -1069,4 +1069,98 @@ def delete_available_on(movieId: int, platformId: int):
         """, movieId=movieId, platformId=platformId)
         return {"deleted": result.single()["deleted"]}
 
+# ════════════════════════════════════════════════════════════════
+# PAYS  (User -> Platform)
+# ════════════════════════════════════════════════════════════════
 
+@router.post("/pays", summary="Crear relación PAYS (User -> Platform)")
+def create_pays(rel: PaysRel):
+    query = """
+    MATCH (u:User {userId: $userId}), (p:Platform {platformId: $platformId})
+    CREATE (u)-[r:PAYS {
+        subscribedSince: date($subscribedSince),
+        plan: $plan,
+        autoRenewal: $autoRenewal
+    }]->(p)
+    RETURN r
+    """
+    with db.session() as s:
+        result = s.run(query, **rel.model_dump(mode="json"))
+        if not result.single():
+            raise HTTPException(status_code=404, detail="Usuario o plataforma no encontrados")
+        return {"message": "Relación PAYS creada"}
+
+
+@router.patch("/pays/bulk/update", summary="Actualizar múltiples PAYS")
+def bulk_update_pays(data: BulkPropertyUpdate):
+    set_clause = ", ".join([f"r.{k} = ${k}" for k in data.properties])
+    query = f"""
+    MATCH ()-[r:PAYS]->() WHERE r.{data.filter_property} = $filter_value
+    SET {set_clause} RETURN count(r) as updated
+    """
+    with db.session() as s:
+        result = s.run(query, filter_value=data.filter_value, **data.properties)
+        return {"updated": result.single()["updated"]}
+
+
+@router.delete("/pays/bulk/properties", summary="Eliminar propiedades de múltiples PAYS")
+def bulk_delete_pays_properties(filter_property: str, filter_value: str, properties: List[str] = Query(...)):
+    remove_clause = ", ".join([f"r.{p}" for p in properties])
+    query = f"""
+    MATCH ()-[r:PAYS]->()
+    WHERE r.{filter_property} = $filter_value
+       OR r.{filter_property} = toInteger($filter_value)
+       OR r.{filter_property} = toFloat($filter_value)
+    REMOVE {remove_clause} RETURN count(r) as updated
+    """
+    with db.session() as s:
+        result = s.run(query, filter_value=filter_value)
+        return {"updated": result.single()["updated"]}
+
+
+@router.delete("/pays/bulk/delete", summary="Eliminar PAYS sin autorenovación")
+def bulk_delete_pays_no_renewal():
+    with db.session() as s:
+        result = s.run("""
+            MATCH ()-[r:PAYS]->() WHERE r.autoRenewal = false
+            DELETE r RETURN count(r) as deleted
+        """)
+        return {"deleted": result.single()["deleted"]}
+
+
+@router.patch("/pays/{userId}/{platformId}", summary="Actualizar PAYS")
+def update_pays(userId: int, platformId: int, data: RelPropertyUpdate):
+    set_clause = ", ".join([f"r.{k} = ${k}" for k in data.properties])
+    query = f"""
+    MATCH (u:User {{userId: $userId}})-[r:PAYS]->(p:Platform {{platformId: $platformId}})
+    SET {set_clause} RETURN r
+    """
+    with db.session() as s:
+        result = s.run(query, userId=userId, platformId=platformId, **data.properties)
+        if not result.single():
+            raise HTTPException(status_code=404, detail="Relación no encontrada")
+        return {"message": "Relación PAYS actualizada"}
+
+
+@router.delete("/pays/{userId}/{platformId}/properties", summary="Eliminar propiedades de 1 PAYS")
+def delete_pays_properties(userId: int, platformId: int, properties: List[str] = Query(...)):
+    remove_clause = ", ".join([f"r.{p}" for p in properties])
+    query = f"""
+    MATCH (u:User {{userId: $userId}})-[r:PAYS]->(p:Platform {{platformId: $platformId}})
+    REMOVE {remove_clause} RETURN r
+    """
+    with db.session() as s:
+        result = s.run(query, userId=userId, platformId=platformId)
+        if not result.single():
+            raise HTTPException(status_code=404, detail="Relación no encontrada")
+        return {"message": "Propiedades eliminadas de PAYS"}
+
+
+@router.delete("/pays/{userId}/{platformId}", summary="Eliminar PAYS")
+def delete_pays(userId: int, platformId: int):
+    with db.session() as s:
+        result = s.run("""
+            MATCH (u:User {userId: $userId})-[r:PAYS]->(p:Platform {platformId: $platformId})
+            DELETE r RETURN count(r) as deleted
+        """, userId=userId, platformId=platformId)
+        return {"deleted": result.single()["deleted"]}
