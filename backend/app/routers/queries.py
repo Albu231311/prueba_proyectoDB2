@@ -377,3 +377,4 @@ def gds_pagerank(userId: int, limit: int = 10):
                     reason=reason)
 
         return recommendations
+
